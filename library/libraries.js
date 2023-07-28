@@ -1,3 +1,12 @@
+function _createTimeoutHelper() {
+    let timeout;
+    const timeoutPromise = new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('Timed out')), 5000);
+    });
+
+    return {timeoutPromise, clearTimeout: () => clearTimeout(timeout)};
+}
+
 var UNKNOWN_VERSION = null;
 var d41d8cd98f00b204e9800998ecf8427e_LibraryDetectorTests = {
 
@@ -150,6 +159,21 @@ var d41d8cd98f00b204e9800998ecf8427e_LibraryDetectorTests = {
             if(win.litElementVersions && win.litElementVersions.length) {
                 // Get latest version if multiple versions are used
                 var versions = [...win.litElementVersions].sort( (a, b) => a.localeCompare(b, undefined, { numeric:true }) );
+                return { version: versions[versions.length - 1] };
+            }
+            return false;
+        }
+    },
+
+    'lit-html': {
+        id: 'lit-html',
+        icon: 'polymer',
+        url: 'https://lit-html.polymer-project.org/',
+        npm: 'lit-element',
+        test: function(win) {
+            if(win.litHtmlVersions && win.litHtmlVersions.length) {
+                // Get latest version if multiple versions are used
+                var versions = [...win.litHtmlVersions].sort( (a, b) => a.localeCompare(b, undefined, { numeric:true }) );
                 return { version: versions[versions.length - 1] };
             }
             return false;
@@ -378,6 +402,18 @@ var d41d8cd98f00b204e9800998ecf8427e_LibraryDetectorTests = {
         }
     },
 
+    'Ezoic': {
+        id: 'ezoic',
+        icon: 'ezoic',
+        url: 'https://www.ezoic.com/',
+        test: function(win) {
+            if (win.__ez && win.__ez.template) {
+                return { version: UNKNOWN_VERSION };
+            }
+            return false;
+        }
+    },
+
     'base2': {
         id: 'base2',
         icon: 'base2',
@@ -531,7 +567,9 @@ var d41d8cd98f00b204e9800998ecf8427e_LibraryDetectorTests = {
         url: 'https://preactjs.com/',
         npm: 'preact',
         test: function (win) {
+            var version = UNKNOWN_VERSION;
             function isMatch(node) {
+                if (node.__k != null) { version = '10'; return true; }
                 return node._component != null || node.__preactattr_ != null;
             }
             function getMatch(node) {
@@ -539,7 +577,6 @@ var d41d8cd98f00b204e9800998ecf8427e_LibraryDetectorTests = {
             }
             var preactRoot = getMatch(document.body) || getMatch(document.body.firstElementChild);
             if (preactRoot || win.preact) {
-                var version = UNKNOWN_VERSION;
                 return { version: version };
             }
             return false;
@@ -1035,6 +1072,19 @@ var d41d8cd98f00b204e9800998ecf8427e_LibraryDetectorTests = {
         }
     },
 
+    'Handsontable': {
+        id: 'handsontable',
+        icon: 'handsontable',
+        url: 'https://handsontable.com/',
+        npm: 'handsontable',
+        test: function(win) {
+            if (win.Handsontable && win.Handsontable.Core) {
+                return { version: win.Handsontable.version || UNKNOWN_VERSION };
+            }
+            return false;
+        }
+    },
+
     'Knockout': {
         id: 'knockout',
         icon: 'knockout',
@@ -1111,10 +1161,21 @@ var d41d8cd98f00b204e9800998ecf8427e_LibraryDetectorTests = {
         npm: 'angular',
         test: function(win) {
             var ng = win.angular;
-            if(ng && ng.version && ng.version.full) {
+            if (ng && ng.version && ng.version.full) {
                 return { version: ng.version.full };
             }
-            else if (ng) {
+            return false;
+        }
+    },
+
+    'Ionic': {
+        id: 'ionic',
+        icon: 'ionic',
+        url: 'https://ionicframework.com/',
+        npm: '@ionic/cli',
+        test: function(win) {
+            var ion = win.document.querySelector('ion-app');
+            if (ion && ion.nodeName === 'ION-APP') {
                 return { version: UNKNOWN_VERSION };
             }
             return false;
@@ -1320,7 +1381,7 @@ var d41d8cd98f00b204e9800998ecf8427e_LibraryDetectorTests = {
         url: 'https://nuxtjs.org/',
         npm: 'nuxt',
         test: function(win) {
-            if ((win.__NUXT__ && win.__NUXT__.data != null) || win.$nuxt) {
+            if (win.__NUXT__ || win.$nuxt || [...win.document.querySelectorAll('*')].some(el => el.__vue__?.nuxt)) {
                 return { version: UNKNOWN_VERSION };
             }
             return false;
@@ -1621,7 +1682,9 @@ var d41d8cd98f00b204e9800998ecf8427e_LibraryDetectorTests = {
         url: 'https://www.wix.com/',
         npm: null,
         test: function (win) {
-            if (win.wixBiSession) {
+            if (win.wixPerformanceMeasurements && win.wixPerformanceMeasurements.info) {
+                return { version: UNKNOWN_VERSION };
+            } else if (win.wixBiSession && win.wixBiSession.info) {
                 return { version: UNKNOWN_VERSION };
             }
             return false;
@@ -1638,9 +1701,13 @@ var d41d8cd98f00b204e9800998ecf8427e_LibraryDetectorTests = {
         if (!('serviceWorker' in nav)) {
           return false;
         }
-        return nav.serviceWorker.getRegistration()
+
+        const {timeoutPromise, clearTimeout} = _createTimeoutHelper();
+
+        const workerPromise = nav.serviceWorker.getRegistration()
         .then(function(registration) {
-          var scriptURL = nav.serviceWorker.controller.scriptURL;
+          var scriptURL = nav.serviceWorker.controller ? nav.serviceWorker.controller.scriptURL :
+            registration.active.scriptURL;
           return fetch(scriptURL, { credentials: 'include',
             headers: { 'service-worker': 'script' }
           })
@@ -1662,8 +1729,20 @@ var d41d8cd98f00b204e9800998ecf8427e_LibraryDetectorTests = {
             }
             return false;
           });
-        }).catch(function(exception) {
+        })
+        /* fix for https://github.com/johnmichel/Library-Detector-for-Chrome/issues/178
+         * `TypeError: Cannot read property 'active' of undefined` on registration.active.scriptURL from failed serviceWorker where 'registration' is undefined above
+         */
+        .catch(function(err){
           return false;
+        })
+        ;
+        
+        return Promise.race([workerPromise, timeoutPromise]).catch(function(exception) {
+          return false;
+        }).finally(result => {
+          clearTimeout();
+          return result;
         });
       }
     },
@@ -1754,5 +1833,169 @@ var d41d8cd98f00b204e9800998ecf8427e_LibraryDetectorTests = {
             }
             return false;
         }
+    },
+    'TYPO3': {
+        id: 'typo3',
+        icon: 'typo3',
+        url: 'https://typo3.org/',
+        npm: null,
+        test: function (win) {
+            const generatorMeta = document.querySelector('meta[name="generator"][content^="TYPO3"]');
+
+            // TYPO3 resource patterns / paths - search in link, style or script tags
+            const resourcesTYPO3 = /\/(typo3conf|typo3temp|fileadmin)/;
+            const res = Array.from(document.querySelectorAll('link,style,script') || []);
+
+            if (generatorMeta || res.some(s => resourcesTYPO3.test(s.src)) || res.some(s => resourcesTYPO3.test(s.href))) {
+		        // No version exposure available in TYPO3 due to information disclosure
+                return { version: UNKNOWN_VERSION };
+            }
+
+            return false;
+        }
+    },
+    'Create React App': {
+        id: 'create-react-app',
+        icon: 'cra',
+        url: 'https://create-react-app.dev/',
+        npm: 'react-scripts',
+        test: function (win) {
+            let child = win.document.body.firstElementChild;
+            let noscript, root;
+            
+            do {
+                if (child.localName === 'noscript') noscript = child;
+                else if (child.id === 'root') root = child;
+            } while (child = child.nextElementSibling);
+            
+            if (root && noscript && /You need to enable JavaScript to run this app/.test(noscript.textContent)) {
+                return { version: UNKNOWN_VERSION };
+            }
+
+            return false;
+        }
+    },
+    'Guess.js': {
+        id: 'guessjs',
+        icon: 'guessjs',
+        url: 'https://guess-js.github.io/',
+        test: function (win) {
+            if (win.__GUESS__ && win.__GUESS__.guess) {
+                return { version: UNKNOWN_VERSION };
+            }
+            return false;
+        }
+    },
+    'October CMS': {
+        id: 'octobercms',
+        icon: 'october',
+        url: 'https://octobercms.com/',
+        npm: null,
+        test: function (win) {
+            const generatorMeta1 = document.querySelector('meta[name="generator"][content^="OctoberCMS"]');
+            const generatorMeta2 = document.querySelector('meta[name="generator"][content^="October CMS"]');
+            
+            // October CMS resource patterns / paths - search in link, style or script tags
+            const resourcesOctober = /\/modules\/system\/assets\/(css|js)\/framework(\.extras|\.combined)?(-min)?/;
+            const res = Array.from(document.querySelectorAll('link,style,script') || []);
+
+            if (generatorMeta1 || generatorMeta2 || res.some(s => resourcesOctober.test(s.src || s.href))) {
+                // No version exposure available in October CMS due to information disclosure
+                return { version: UNKNOWN_VERSION };
+            }
+
+            return false;
+        }
+    },
+    'Joomla': {
+        id: 'joomla',
+        icon: 'joomla',
+        url: 'https://www.joomla.org/',
+        npm: null,
+        test: function (win) {
+            // You can disable the generator tag as well as the version from the backend
+            const generatorMeta = document.querySelector('meta[name=generator][content^="Joomla"]');
+            // This is the path to the joomla core bootstrap but sites are not required to load that file but could also load a different version
+            const hasJoomlaBootstrap = !!document.querySelectorAll('script[src*="/media/jui/js/bootstrap.min.js"]').length;
+            
+            if (generatorMeta) {
+                return { version: generatorMeta.getAttribute("content").replace(/^\w+\s/,'') };
+            } else if (win.Joomla || hasJoomlaBootstrap) {
+                return { version: UNKNOWN_VERSION };
+            }
+            
+            return false;
+        }
+    },
+    'Sugar': {
+        id: 'sugar',
+        icon: 'sugar',
+        url: 'https://sugarjs.com',
+        npm: 'sugar',
+        test: function (win) {
+            if (win.Sugar) {
+                return { version: win.Sugar.VERSION || UNKNOWN_VERSION };
+            }
+
+            if (win.Array.SugarMethods) {
+                return { version: UNKNOWN_VERSION };
+            }
+
+            return false;
+        }
+    },
+    'Bento': {
+      id: 'bentojs',
+      icon: 'bentojs',
+      url: 'https://bentojs.dev',
+      npm: 'https://www.npmjs.com/org/bentoproject',
+      test: function (win) {
+        if (win.BENTO && win.BENTO.push) {
+          return { version: UNKNOWN_VERSION };
+        }
+        return false;
+      }
+    },
+    'WP Rocket':{
+        id:'wp-rocket',
+        icon:'wp-rocket',
+        url: 'https://wp-rocket.me/',
+        npm: null,
+        test: async function (win) {
+            const wpRocketLazyLoad = typeof RocketLazyLoadScripts !== 'undefined'|| typeof RocketPreloadLinksConfig !== 'undefined' ||typeof rocket_lazy !== 'undefined';
+            const wpRocketRUCSS = !!document.querySelector('style#wpr-usedcss');
+            const wpRocketComment = document.lastChild.nodeType === Node.COMMENT_NODE && document.lastChild.textContent.includes('WP Rocket');
+
+            if ( wpRocketRUCSS || wpRocketLazyLoad || wpRocketComment ) {
+                return { version: UNKNOWN_VERSION };
+            }
+            return false;
+        }
+    },
+    'NitroPack': {
+        id: 'nitropack',
+        icon: 'nitropack',
+        url: 'https://nitropack.io/',
+        npm: null,
+        test: async function (win) {
+            const nitroPackGenerator = !!document.querySelector('meta[name="generator"][content="NitroPack"]');
+
+            if ( nitroPackGenerator ) {
+                return { version: UNKNOWN_VERSION };
+            }
+            return false;
+        }
+    },
+    'Remix': {
+      id: 'remix',
+      icon: 'remix',
+      url: 'https://remix.run/',
+      npm: 'remix',
+      test: function (win) {
+        if (win.__remixContext) {
+          return { version: UNKNOWN_VERSION };
+        }
+        return false;
+      }
     }
 };
